@@ -789,6 +789,10 @@ The next comparable model is logistic regression which has better results along 
 
 I would like to explore more on parameter tuning and also see if any processing can be done on the different levels of each variable. Maybe variables like capital gain and caplital loss can be fine tuned further and we can achieve even higher accuracy and F1 score.
 
+##Reference
+
+UCI Machine Learning Repository [https://archive.ics.uci.edu/ml/datasets/Adult]. Irvine, CA: University of California, School of Information and Computer Science.
+
 
 
 
