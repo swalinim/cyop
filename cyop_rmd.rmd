@@ -1,0 +1,794 @@
+---
+title: 'Capstone: Predict Adult Income'
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r global options, message=FALSE, warning=FALSE, include=FALSE}
+knitr::opts_chunk$set(fig.width=10, fig.height=6) 
+```
+
+##Introduction
+
+The goal of this project is to predict whether the income of adults is greater than $50k/yr. This is a classification problem. We use a couple of algorithms to train the model and then choose the most suitable one. 
+
+###Dataset
+
+Adult Data Set is used for the prediction purpose. The dataset can be downloaded using this URL: $\color{blue}{\text{[https://archive.ics.uci.edu/ml/datasets/Adult]}}$. As mentioned in this website - "Extraction was done by Barry Becker from the 1994 Census database. A set of reasonably clean records was extracted using the following conditions: ((AAGE>16) && (AGI>100) && (AFNLWGT>1)&& (HRSWK>0)).
+Prediction task is to determine whether a person makes over 50K a year."
+
+The following files are available:
+
+1. adult.data
+2. adult.test
+3. adult.names  
+
+adult.names file provides us with information about the data. It is mentioned that there are a total of 48842 instances which is split into train-test datasets.Train dataset is available in adult.data file, it has 32561 instances and test dataset is available in adult.test file, it has 16281 instances. 
+
+The variables of this dataset are as follows:
+
+age, workclass, fnlwgt, education, education_num, marital_status, occupation, relationship, race, sex, capital_gain, capital_loss, hours_per_week, native_country, income - variable to be predicted. 
+
+###Procedure
+
+First we download data and then preprocess it. Data exploration is done to identify which of the above mentioned variables are to be used for income prediction. Then the following algorithms are applied to train the model. For training the model, data is split into train(90%) and validation(10%) datasets. 
+
+Algorithms used -   
+1. Logistic Regression  
+2. Support Vector Classifier  
+3. Random Forest Classifier  
+4. Gradient Boosting Classifier  
+
+Model performance is evaluated based on Overall Accuracy and F1 score. Confusion Matrix is used to obtain Accuracy and F1 score. 
+
+Accuracy - This is defined as the no. of correct predictions divided by the total number of the dataset.
+
+F1-score - This is the harmonic mean of precision and recall.
+
+$$F1-score = \frac{2 * precision * recall}{precision + recall}$$
+
+where,
+precision is Positive Predictive Value
+recall is sensitivity
+
+If results of confusion Matrix is stored in "cm", we can obtain accuracy using the command cm\$overall["Accuracy"] and F1-score using the command cm\$byClass["F1"]
+
+###Downloading Data:
+
+The required libraries and data are downloaded. Data is read into the file "income_data" and column names are assigned to the data. \newline 
+ 
+```{r Downloading data, message=FALSE, warning=FALSE}
+#__________________________
+#Download required packages
+#__________________________
+
+if(!require(tidyverse)) 
+  install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(caret)) 
+  install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) 
+  install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) 
+  install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(randomForest)) 
+  install.packages("randomForest", repos = "http://cran.us.r-project.org")
+
+#_____________________________________________________________
+# Part 1: Downloading data, preprocessing and Data exploration
+#_____________________________________________________________
+
+# Downloading and Reading data
+
+if(!file.exists("adult.data")){
+  download.file("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data","adult.data")
+}
+income_data <- read.csv("adult.data",header = FALSE)
+
+# Set column names
+colnames(income_data) <- c("age","workclass","fnlwgt","education","education_num","marital_status",
+                           "occupation","relationship","race","sex","capital_gain","capital_loss", 
+                           "hours_per_week","native_country","income")
+
+```
+
+ 
+##Methods/Analysis
+
+###Data preprocessing
+
+First we check the data dimensions. There are 32561 rows and 15 columns. The structure of data reveals that there are 6 columns of type integer and 9 columns of type factor. Also, we can notice some columns have data in the form " ?" which is unknown/missing data(mentioned in adult.names) file. We can further confirm this using summary() and levels command. The no. of rows with missing data is few in number, so we remove these rows.
+
+We re-read the income_data file and convert " ?" to NA and then omit rows containing NA. We set the column names again. Now the no. of rows is 30162 and 15 columns.  \newline
+ 
+```{r Data cleaning, warning=FALSE}
+# Explore data
+
+# To get the dimension of data
+dim(income_data)
+
+# To check the structure of data
+str(income_data)
+
+# To get summary of data
+summary(income_data)
+
+# To explore the levels in each column
+sapply(income_data, levels)
+
+# Convert " ?" data to NA and the remove rows with NA
+income_data <- read.csv("adult.data",na.strings = c(" ?"),header = FALSE)
+
+income_data <- na.omit(income_data)
+
+# Set column names again
+colnames(income_data) <- c("age","workclass","fnlwgt","education","education_num","marital_status",
+                           "occupation","relationship","race","sex","capital_gain","capital_loss", 
+                           "hours_per_week","native_country","income")
+
+# To get the dimension of new data
+dim(income_data)
+```
+
+ 
+Splitting data into Train and validation sets:
+
+We split the data into train and validation sets where validation set is 10% of the income_data. Train set has 27145 rows and validation has 3017 rows. \newline
+ 
+```{r Splitting data, warning=FALSE}
+# Create Train and validation set with validation set having 10% data
+set.seed(1, sample.kind="Rounding")
+# if using R 3.5 or earlier, use `set.seed(1)` instead
+
+test_index <- createDataPartition(income_data$income,p = 0.1,
+                                  times = 1,list = FALSE)
+trainset <- income_data[-test_index, ]
+validation <- income_data[test_index,]
+
+# To get dimension of train and validation data
+dim(trainset)
+dim(validation)
+```
+
+
+###Data Exploration
+
+There are 14 variables, so we explore each variable further.
+
+1. age
+
+The minimum and maximum age is 17 and 90 yrs respectively. Mean age is 38 yrs. Most data lies in the range 20 to 50 yrs. Age vs income plot shows that the proportion of income ">50K" is greater for age >= 30 and age <=60 compared to other age groups. \newline
+
+```{r age, echo=FALSE, warning=FALSE}
+# Summary of age
+summary(trainset$age)
+
+# Group age
+trainset <- trainset %>% 
+  mutate(
+    age_group =case_when(
+      age > 10 & age <= 20 ~ "17-20",
+      age > 20 & age <= 30 ~ "21-30",
+      age > 30 & age <= 40 ~ "31-40",
+      age > 40 & age <= 50 ~ "41-50",
+      age > 50 & age <= 60 ~ "51-60",
+      age > 60 & age <= 70 ~ "61-70",
+      age > 70 & age <= 80 ~ "71-80",
+      age > 80 & age <= 90 ~ "81-90"
+    ))
+
+# This plot displays age distribution
+trainset %>% ggplot(aes(age)) + 
+  geom_histogram(binwidth = 5, col = "black", fill = "grey") +
+  scale_x_continuous(breaks = seq(0, 95, 5)) +   
+  scale_y_continuous(breaks = seq(0, 5000, 500)) +
+  ggtitle("Age distribution")
+
+# This plot displays age_group vs income
+trainset %>% ggplot(aes(x = age_group,fill = income)) + 
+  geom_bar(width = 0.3, col = "black") +
+  scale_y_continuous(breaks = seq(0,9000,1000)) +
+  ggtitle("Age - Income distribution")
+
+```
+  
+2. Workclass 
+
+Private sector constitutes majority of workclass. The level "never-worked" has 0 entries whereas without pay is negligible. The same can be seen in histogram as well.
+
+The barplot with workclass and income also shows that income ">50k" is maximum in private workclass. \newline
+
+```{r workclass, echo=FALSE, warning=FALSE}
+# 2. workclass
+
+# Summary of workclass
+summary(trainset$workclass)
+
+# This plot displays workclass distribution
+trainset  %>% ggplot(aes(workclass)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Workclass distribution")
+
+# This plot displays workclass vs income
+trainset  %>% ggplot(aes(workclass,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) + 
+  ggtitle("Workclass - Income distribution")
+
+```
+  
+3. Final weight
+
+Weights are assigned to participants based on demographic characteristics. For more details about fnlwgt, adult.names file can be referred. The minimum and maximum fnlwgt is 13769 and 1484705. As we can see in the boxplots there are many outliers and this variable is not very helpful in predicting income. Therefore we drop this variable.  \newline
+
+```{r final weight, echo=FALSE, warning=FALSE}
+# 3. Final weight
+
+# Summary of fnlwgt
+summary(trainset$fnlwgt)
+
+# This plot displays boxplot distribution of fnlwgt
+trainset %>% ggplot(aes(factor(0),fnlwgt)) + 
+  geom_boxplot() + ggtitle("Final Weight distribution")
+
+# This plot displays boxplot distribution of fnlwgt vs income
+trainset %>% ggplot(aes(income,fnlwgt)) +
+  geom_boxplot() +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  stat_summary(fun.y = mean, geom = "point") +
+  ggtitle("Final Weight - Income distribution")
+```
+  
+4. Education
+
+The education of each individual can be seen in the histogram plot. Income ">50k" is more in the cases of bachelors, HS-grad, masters and some college. Doctorate and Prof-school have more cases of income ">50k" compared to the total no. of cases in the respective classes.  \newline
+
+```{r Education, echo=FALSE, warning=FALSE}
+# 4.Education
+
+# Summary of education
+summary(trainset$education)
+
+# This plot displays education distribution
+trainset  %>% ggplot(aes(education)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Education distribution")
+
+# This plot displays education vs income
+trainset  %>% ggplot(aes(education,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Education - Income distribution")
+```
+  
+5. Education Number
+
+Education_num is the numerical form of education. Therefore this is a redundant variable and we drop this variable.
+
+```{r Education_number, echo=FALSE, warning=FALSE}
+# 5. Eduation Number
+
+# Summary of education_num
+summary(trainset$education_num)
+
+# Group education and education_num by education
+trainset %>% select(education,education_num) %>% 
+  group_by(education_num) %>% count(education_num,education)
+
+```
+
+6. Marital Status
+
+Summary and barplots indicate that majority of individuals are of the category married-civ-spouse. This same category has more no. of individuals with income ">50K".
+
+```{r marital status, warning=FALSE}
+# 6. Marital status
+
+#Summary of marital_status
+summary(trainset$marital_status)
+
+# This plot displays marital_status distribution
+trainset  %>% ggplot(aes(marital_status)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Marital Status distribution")
+
+# This plot displays marital_status vs income
+trainset  %>% ggplot(aes(marital_status,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Marital Status- Income distribution")
+```
+  
+7. Occupation
+
+People earning income ">50k" are mostly in the categories "Exec -Managerial" and "Prof-specialty".  \newline
+
+```{r occupation, echo=FALSE, warning=FALSE}
+# 7. Occupation
+
+# Summary of occupation
+summary(trainset$occupation)
+
+# This plot displays occupation distribution
+trainset  %>% ggplot(aes(occupation)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Occupation distribution")
+
+# This plot displays occupation vs income
+trainset  %>% ggplot(aes(occupation,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Occupation - Income distribution")
+
+```
+  
+8. Relationship
+
+"Husband" category has most no. of entries and also income ">50k" is mostly seen in husband category. \newline
+
+```{r relationship, echo=FALSE, warning=FALSE}
+# 8. Relationship
+
+# Summary of relationship
+summary(trainset$relationship)
+
+# This plot displays relationship distribution
+trainset  %>% ggplot(aes(relationship)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Relationship distribution")
+
+# This plot displays relationship vs income
+trainset  %>% ggplot(aes(relationship,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Relationship - Income distribution")
+
+```
+  
+9. Race
+
+Most of the participants belong to "white" category followed by "black".  \newline
+
+```{r race, echo=FALSE, warning=FALSE}
+# 9. Race
+
+# Summary of race
+summary(trainset$race)
+
+# This plot displays race distribution
+trainset  %>% ggplot(aes(race)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Race distribution")
+
+# This plot displays race vs income distribution
+trainset  %>% ggplot(aes(race,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Race - Income distribution")
+```
+
+10. Sex
+
+Around 67% are males and 33% are females. No. of females with income ">50k" is less compared to males.  \newline
+
+```{r sex, echo=FALSE, warning=FALSE}
+# 10. Sex
+
+# Summary of sex
+summary(trainset$sex)
+
+# This plot displays sex distribution
+trainset  %>% ggplot(aes(sex)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Sex distribution")
+
+# This plot displays sex vs income
+trainset  %>% ggplot(aes(sex,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) + 
+  ggtitle("Sex - Income distribution")
+```
+
+Further we can observe that no. of males are more educated than females which explains the income distribution difference in males and females.  \newline
+
+```{r education - sex , echo=FALSE, warning=FALSE}
+# This plot displays education vs sex
+trainset  %>% ggplot(aes(education,fill = sex)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) + 
+  ggtitle("Education - sex distribution")
+```
+
+11. Capital Gain and Capital Loss
+
+Capital gain and Capital loss many values as "0" and there are many outliers as well. This is because not everybody invests in stock markets. \newline
+
+```{r capital gain and loss, echo=FALSE, warning=FALSE}
+# 11. Capital_gain
+
+# Summary of capital_gain
+summary(trainset$capital_gain)
+
+# This plot displays capital gain distribution
+trainset %>% ggplot(aes(capital_gain)) + 
+  geom_histogram(col = "black", fill = "grey") +
+  ggtitle("Capital-gain distribution")
+ 
+# This plot displays boxplot of capital gain distribution
+trainset %>% ggplot(aes(factor(0),capital_gain)) + 
+  geom_boxplot() +
+  ggtitle("Capital-gain distribution")
+
+# 12. Capital_loss
+
+# Summary of capital_loss
+summary(trainset$capital_loss)
+
+# This plot displays capital loss distribution
+trainset %>% ggplot(aes(capital_loss)) + 
+  geom_histogram(col = "black", fill = "grey") +
+  ggtitle("Capital-loss distribution")
+
+# This plot displays boxplot of capital loss distribution
+trainset %>% ggplot(aes(factor(0),capital_loss)) + 
+  geom_boxplot() +
+  ggtitle("Capital-loss distribution")
+
+```
+
+12. Hours-per-week
+
+Minimum working hours is 1hr and maximum working hours is 99hrs. The mean no. of working hours is 40hrs. For income ">50k", the mean working hours is between 45 to 50 hrs.  \newline
+
+```{r Hours per week, echo=FALSE, warning=FALSE}
+# 13. Hours per week
+
+# Summary of hour_per_week
+summary(trainset$hours_per_week)
+
+# This plot displays hours_per_week distribution
+trainset %>% ggplot(aes(hours_per_week)) + 
+  geom_histogram(binwidth = 5, col = "black", fill = "grey") +
+  scale_x_continuous(breaks = seq(1, 99, 5)) +   
+  scale_y_continuous(breaks = seq(0, 15000, 1000)) +
+  ggtitle("Hours-per-week distribution")
+
+# This plot displays hours_per_week vs income
+trainset %>% ggplot(aes(x = hours_per_week,fill = income)) + 
+  geom_bar(width = 0.5, col = "black") +
+  scale_y_continuous(breaks = seq(0,15000,1000)) +
+  scale_x_continuous(breaks = seq(0,100,5)) +
+  ggtitle("Hours-per-week - Income distribution")
+
+```
+
+13. Native country
+
+Summary shows that about 91% of the population belongs to United States. \newline
+
+```{r Native Country, echo=FALSE, warning=FALSE}
+# 14. Native country
+
+# Summary of native_country
+summary(trainset$native_country)
+
+# This plot displays native country distribution
+trainset  %>% ggplot(aes(native_country)) + 
+  geom_bar(col = "black", fill = "grey") +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Native-country distribution")
+
+# This plot displays native country vs income
+trainset  %>% ggplot(aes(native_country,fill = income)) + 
+  geom_bar() +
+  theme(axis.text.x = element_text(angle=90,hjust = 1)) +
+  ggtitle("Native-country - Income distribution")
+```
+
+ 14. Income 
+
+This is the response variable. About 75% of the sample has income "<=50k". \newline
+
+```{r Income, warning=FALSE}
+# 15. Income
+
+# Summary of income
+summary(trainset$income)
+
+# To calculate proportions for each factor level
+percentage <- 100 * prop.table(table(trainset$income)) 
+
+# Display in table format
+cbind(freq = table(trainset$income), percentage = percentage)
+```
+
+
+##Data Modeling
+
+We use all the variables except fnlwgt and education_num for data modeling. Algorithms used are as follows.
+
+1. Logistic Regression 
+
+The response variable to be predicted is binary. So one of the best candidate algorithm is Logistic Regression.
+
+Logistic Regression is suited for binary classification problems.Real-valued numbers are mapped to a value between 0 and 1 using Logistic Regression. Logistic Regression uses an equation where input values(x) are combined linearly using coefficient values($\beta$) to predict an output value (y). Here, the output is in binary form(0 and 1). Each column used as input has an associated coefficient which is learned from training data.
+
+We have used method as glm(generalized linear model) and family as binomial since this is Logistic Regression. \newline
+
+```{r Fit logistic regression model, message=FALSE, warning=FALSE}
+
+# 1. Logistic Regression
+
+set.seed(1, sample.kind="Rounding")
+
+# Fit data using caret package, method - glm, family - binomial
+train_lr <- train(income ~ age + workclass + education + occupation + 
+                    relationship+ hours_per_week + native_country +
+                    race + sex + marital_status + capital_gain + capital_loss, 
+                  data=trainset, 
+                  method = "glm", 
+                  family="binomial")
+
+# Predict income using the above fitted model
+pred_lr <- predict(train_lr,validation)
+
+# Save results of Confusion Matrix
+lr_acc <- confusionMatrix(pred_lr,validation$income)
+
+# Add results to a table
+results <- tibble(Method="Logistic Regression",  
+                  Accuracy_Train = lr_acc$overall["Accuracy"],
+                  F1_Train = lr_acc$byClass[7])
+results %>% knitr::kable()
+
+```
+
+Accuracy obtained using logistic regression is 0.8578058 and F1 score is 0.9081567.
+
+2. Support Vector Classification
+
+Next we try with Support Vector Classification.
+
+Support vector machine(SVM) algorithm finds a hyperplane in an N-dimensional space where N is the no. of features. This hyperplane distinctly classifies the data points. Our objective is to find a plane that has the maximum margin, i.e the maximum distance between the data points of both classes. The dimension of the hyperplane depends upon the number of features.
+Support vectors are data points that are closer to the hyperplane and influence the position and orientation of the hyperplane. Using these support vectors, we maximize the margin of the classifier.These are the points that help us build our SVM.
+
+SVM from caret package takes a long time for computing, therefore we use svm from base package. \newline
+
+```{r Fit svm model, message=FALSE, warning=FALSE}
+# 2. Support Vector Classifier
+
+set.seed(3, sample.kind="Rounding")
+
+## Fit data using svm from base package
+svc <- svm(income ~ age + workclass + education + capital_gain +
+             occupation + relationship + race + sex + capital_loss +
+             hours_per_week + native_country + marital_status, 
+           data=trainset)
+
+# Predict income using the above fitted model
+pred_svc <- predict(svc,validation)
+
+# Save results of Confusion Matrix
+cm_svc <- confusionMatrix(pred_svc,validation$income)
+
+# Add results to the results table
+results <- bind_rows(results, tibble(Method="Support Vector Classifier",  
+                                     Accuracy_Train = cm_svc$overall["Accuracy"],
+                                     F1_Train = cm_svc$byClass[7]))
+results %>% knitr::kable()
+
+```
+ 
+  
+Accuracy obtained using support vector classification is 0.8544912 and F1 score is 0.9066950.
+
+3. Random Forest Classification
+
+Random forest consists of a large number of individual decision trees. Random Forest is an ensemble model. Each individual tree in the random forest gives a class prediction and the class with the most votes becomes the model's prediction.
+
+Random Forest from caret package takes a long time for computing, therefore we use rf from base package.
+
+```{r Fit random forest model, message=FALSE, warning=FALSE}
+# 3. Random Forest Classifier
+
+set.seed(4, sample.kind="Rounding")
+
+## Fit data using rf from base package
+raf <- randomForest(income ~ age + workclass + education + capital_gain + 
+                      occupation + relationship + race + sex + capital_loss +
+                      hours_per_week + native_country + marital_status,
+                    data = trainset)
+
+# Predict income using the above fitted model
+pred_raf <- predict(raf ,validation)
+
+# Save results of Confusion Matrix
+cm_raf <- confusionMatrix(pred_raf,validation$income)
+
+# Add results to the results table
+results <- bind_rows(results, tibble(Method="Random Forest Classifier",  
+                                     Accuracy_Train = cm_raf$overall["Accuracy"],
+                                     F1_Train = cm_raf$byClass[7]))
+results %>% knitr::kable()
+```
+
+Accuracy obtained using random forest classification is 0.8674180 and F1 score is 0.9136069. Here we see an improvement over logistic regression and svm.
+
+4. Gradient Boosting Classifier
+
+We use boosting method to convert weak learners into strong leaders. Here a new tree is fit based on the previous tree with modified weights. Gradient Boosting trains many models in a gradual, additive and sequential manner. \newline
+
+```{r fit gbc model, message=FALSE, warning=FALSE, include=FALSE}
+# 4. Gradient Boosting Classifier
+
+set.seed(6, sample.kind="Rounding")
+
+# Fit data using caret package, method - gbm
+gbc <- train(income ~ age + workclass + education + capital_gain +
+               occupation + relationship + race + sex + capital_loss +
+               hours_per_week + native_country + marital_status, 
+             data=trainset, 
+             method = "gbm")
+
+# Predict income using the above fitted model
+pred_gbc <- predict(gbc,validation)
+
+# Save results of Confusion Matrix
+cm_gbc <- confusionMatrix(pred_gbc,validation$income)
+
+# Add results to the results table
+results <- bind_rows(results,tibble(Method="Gradient Boosting Classifier",  
+                                    Accuracy_Train = cm_gbc$overall["Accuracy"],
+                                    F1_Train = cm_gbc$byClass[7]))
+results %>% knitr::kable()
+
+```
+  
+
+Accuracy obtained using gradient boosting classification is 0.8700696  and F1 score is 0.9169492. Here we see an improvement over logistic regression, svm and random forest classification.
+
+##Results
+
+Now that we have trained our models, we apply them to test data. As noted earlier test data is available here: $\color{blue}{\text{[https://archive.ics.uci.edu/ml/datasets/Adult]}}$ in adult.test file.
+
+We follow the same preprocessing steps followed for train data set.
+The results are tabulated in the form of a table for easy comparison between models.  \newline
+
+```{r Test results, warning=FALSE}
+#_______________________________________________
+# Part 4: Results / Check the models on test set
+#_______________________________________________
+
+# Downloading and Reading test data
+
+if(!file.exists("adult.test")){
+  download.file("http://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test","adult.test")
+}
+income_test <- read.csv("adult.test",header = FALSE,skip=1)
+
+# Set column names
+colnames(income_test) <- c("age","workclass","fnlwgt","education","education_num","marital_status",
+                           "occupation","relationship","race","sex","capital_gain","capital_loss", 
+                           "hours_per_week","native_country","income")
+
+# explore test data
+
+# To check the structure of test data
+str(income_test)
+
+# To get the dimension of test data
+dim(income_test)
+
+# To get summary of test data
+summary(income_test)
+
+# To explore the levels in each column of test data
+sapply(income_test, levels)
+
+# Convert " ?" data to NA and the remove rows with NA
+income_test <- read.csv("adult.test",na.strings = c(" ?"),header = FALSE,skip=1)
+income_test <- na.omit(income_test)
+
+# Set column names again
+colnames(income_test) <- c("age","workclass","fnlwgt","education","education_num","marital_status",
+                           "occupation","relationship","race","sex","capital_gain","capital_loss", 
+                           "hours_per_week","native_country","income")
+
+# Assign levels of income to test data
+levels(income_test$income)[1] <- " <=50K"
+levels(income_test$income)[2] <- " >50K"
+
+# To ensure levels of native_country in train and test data are same
+levels(income_test$native_country) <- levels(trainset$native_country)
+
+# 1. Logistic Regression
+
+# Use test data to predict income using the above fitted logistic regression model
+pred_lrtest <- predict(train_lr,income_test)
+
+# Save results of Confusion Matrix
+lr_test <- confusionMatrix(pred_lrtest,income_test$income)
+
+# Add results to the table
+test_results <- tibble(Accuracy_Test = lr_test$overall["Accuracy"],
+                       F1_Test = lr_test$byClass[7])
+test_results %>% knitr::kable()
+
+# 2. Support Vector Classifier
+
+set.seed(3, sample.kind="Rounding")
+
+# Use test data to predict income using the above fitted svm model
+pred_svctest <- predict(svc,income_test)
+
+# Save results of Confusion Matrix
+svc_test <- confusionMatrix(pred_svctest,income_test$income)
+
+# Add results to the table
+test_results <- bind_rows(test_results, tibble(  
+  Accuracy_Test = svc_test$overall["Accuracy"],
+  F1_Test = svc_test$byClass[7]))
+test_results %>% knitr::kable()
+
+# 3. Random Forest Classifier
+
+set.seed(4, sample.kind="Rounding")
+
+# Use test data to predict income using the above fitted random forest model
+pred_raftest <- predict(raf,income_test)
+
+# Save results of Confusion Matrix
+raf_test <- confusionMatrix(pred_raftest,income_test$income)
+
+# Add results to the table
+test_results <- bind_rows(test_results, tibble(  
+  Accuracy_Test = raf_test$overall["Accuracy"],
+  F1_Test = raf_test$byClass[7]))
+test_results %>% knitr::kable()
+
+# 4. Gradient Boosting Classifier
+
+set.seed(6, sample.kind="Rounding")
+
+# Use test data to predict income using the above fitted gradient boosting model
+pred_gbctest <- predict(gbc,income_test)
+
+# Save results of Confusion Matrix
+gbc_test <- confusionMatrix(pred_gbctest,income_test$income)
+
+# Add results to the table
+test_results <- bind_rows(test_results, tibble(  
+  Accuracy_Test = gbc_test$overall["Accuracy"],
+  F1_Test= gbc_test$byClass[7]))
+test_results %>% knitr::kable()
+
+# Add test results to train results table
+results <- bind_cols(results,test_results)
+results %>% knitr::kable()
+
+```
+
+Out of the 4 models used on test data set, gradient boosting classifier has the best accuracy and F1 score followed by logistic regression. But gradient boosting classifier has more computation time compared to other models.
+  
+##Conclusion
+
+We use adult data set to predict whether income is "<=50k" or ">50k". After downloading data we removed all the rows with missing/unknown values. We explored data and realized final weight and education_num are not useful for the prediction. Therefore, we drop these variables. 
+
+Then we fit our data using the above models and on find that gradient boosing classifier has the best performance in this scenario but it also takes a longer time for the comptation.
+
+The next comparable model is logistic regression which has better results along with lesser computaion time. 
+
+I would like to explore more on parameter tuning and also see if any processing can be done on the different levels of each variable. Maybe variables like capital gain and caplital loss can be fine tuned further and we can achieve even higher accuracy and F1 score.
+
+
+
+
